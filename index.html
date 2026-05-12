@@ -115,19 +115,34 @@
   @media print {
     .add-row, .top-bar-right, .drag-handle, .icon-btn, .color-swatch, .min-wrap, .modal-overlay, .warning-bar { display:none !important; }
     .block { break-inside:avoid; }
-    .bh { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .gc-hdr { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .bh { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    .gc-hdr { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
   }
-  /* LIGHT PRINT MODE — toggled by JS adding class to <html> */
-  html.print-light body { background:#fff; color:#111; }
-  html.print-light .logo-img { mix-blend-mode:multiply; }
-  html.print-light .wrap { background:#fff; }
-  html.print-light .bb { background:#fff; }
-  html.print-light .bb textarea, html.print-light .gc textarea { background:#fff; color:#111; border-color:#ccc; }
-  html.print-light .pt-row { background:#f0f0f0; border-color:#ccc; }
-  html.print-light .meta-row .df input, html.print-light .meta-row .df select { background:#fff; color:#111; border-color:#ccc; }
-  html.print-light .top-bar { border-color:#ccc; }
-  html.print-light .block { border-color:#ccc; }
+
+  /* DARK PRINT — force dark colors into print output */
+  @media print {
+    html.print-dark body { background:#1a1b1e !important; color:#e8e9ec !important; -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    html.print-dark .wrap, html.print-dark .bb { background:#25262b !important; }
+    html.print-dark .block { border-color:#3a3d44 !important; background:#1a1b1e !important; }
+    html.print-dark .bb textarea, html.print-dark .gc textarea { background:#2c2e33 !important; color:#e8e9ec !important; border-color:#3a3d44 !important; }
+    html.print-dark .pt-row { background:#25262b !important; border-color:#3a3d44 !important; }
+    html.print-dark .notes-lbl { color:#a0a4ad !important; }
+    html.print-dark .time-summary { color:#a0a4ad !important; }
+    html.print-dark .top-bar, html.print-dark .meta-row .df input, html.print-dark .meta-row .df select { background:#25262b !important; color:#e8e9ec !important; border-color:#3a3d44 !important; }
+  }
+
+  /* LIGHT PRINT — clean white output */
+  @media print {
+    html.print-light body { background:#fff !important; color:#111 !important; }
+    html.print-light .wrap, html.print-light .bb { background:#fff !important; }
+    html.print-light .block { border-color:#ccc !important; }
+    html.print-light .bb textarea, html.print-light .gc textarea { background:#fff !important; color:#111 !important; border-color:#ccc !important; }
+    html.print-light .pt-row { background:#f0f0f0 !important; border-color:#ccc !important; }
+    html.print-light .notes-lbl { color:#555 !important; }
+    html.print-light .time-summary { color:#555 !important; }
+    html.print-light .top-bar { border-color:#ccc !important; }
+    html.print-light .logo-img { mix-blend-mode:multiply; }
+  }
 </style>
 </head>
 <body>
@@ -235,13 +250,14 @@ function selectMode(mode){
 }
 function doPrint(){
   closeExportModal();
-  if(selectedMode==='light') document.documentElement.classList.add('print-light');
-  else document.documentElement.classList.remove('print-light');
+  const html = document.documentElement;
+  html.classList.remove('print-light','print-dark');
+  if(selectedMode==='light') html.classList.add('print-light');
+  else html.classList.add('print-dark');
   setTimeout(()=>{
     window.print();
-    // restore dark after print dialog closes
-    setTimeout(()=>document.documentElement.classList.remove('print-light'), 1000);
-  }, 150);
+    setTimeout(()=>{ html.classList.remove('print-light','print-dark'); }, 1500);
+  }, 200);
 }
 
 // ── SCHEDULE LOGIC ──────────────────────────────────────────────────────────
