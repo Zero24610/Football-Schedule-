@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JHS Bulldogs — Practice Schedule</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
     --bg:#1a1b1e; --bg2:#25262b; --bg3:#2c2e33;
@@ -112,6 +113,27 @@
   .gc textarea:focus { outline:none; }
 
   /* BASE PRINT — always hide UI chrome */
+  /* SAVE/LOAD PANEL */
+  .sl-bar { display:flex; gap:8px; align-items:center; margin-bottom:1rem; flex-wrap:wrap; padding:10px 14px; background:var(--bg2); border:1px solid var(--border); border-radius:12px; }
+  .sl-bar-label { font-size:11px; color:var(--text2); font-weight:500; text-transform:uppercase; letter-spacing:.05em; margin-right:2px; }
+  .sl-btn { font-size:12px; padding:5px 11px; border:1px solid var(--border); border-radius:7px; background:var(--bg3); color:var(--text); cursor:pointer; display:flex; align-items:center; gap:5px; white-space:nowrap; }
+  .sl-btn:hover { background:#3a3d44; }
+  .sl-btn.green { background:#1a4a10; border-color:#2a6a18; }
+  .sl-btn.green:hover { background:#215e14; }
+  .sl-btn.blue { background:#0f3660; border-color:#1a5090; }
+  .sl-btn.blue:hover { background:#144070; }
+  .sl-btn.excel { background:#14532d; border-color:#166534; }
+  .sl-btn.excel:hover { background:#166534; }
+  .sl-select { font-size:12px; padding:5px 9px; border:1px solid var(--border); border-radius:7px; background:var(--bg3); color:var(--text); min-width:180px; }
+  /* SAVE NAME MODAL */
+  .save-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200; display:none; align-items:center; justify-content:center; }
+  .save-modal-overlay.open { display:flex; }
+  .save-modal { background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:1.5rem; width:340px; max-width:90vw; }
+  .save-modal h2 { font-size:15px; font-weight:600; color:var(--text); margin-bottom:.5rem; }
+  .save-modal input { width:100%; font-size:13px; padding:7px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg3); color:var(--text); margin-bottom:1rem; }
+  .save-modal input:focus { outline:none; border-color:var(--accent); }
+  .save-modal-actions { display:flex; gap:8px; justify-content:flex-end; }
+
   @page { margin: 0.4cm; }
   @media print {
     body { padding: 0.3rem !important; }
@@ -158,6 +180,7 @@
       <p>Jordan High School Football</p>
     </div>
     <div class="top-bar-right">
+      <button class="sl-btn excel" onclick="exportExcel()"><i class="ti ti-table-export"></i> Excel</button>
       <button class="export-btn" onclick="openExportModal()"><i class="ti ti-printer"></i> Print / Export</button>
     </div>
   </div>
@@ -232,6 +255,29 @@
     </select>
     <input type="text" id="custom-name" placeholder="Block name..." style="display:none;min-width:140px;">
     <button onclick="addBlock()"><i class="ti ti-plus"></i> Add block</button>
+  </div>
+
+  <!-- SAVE / LOAD BAR -->
+  <div class="sl-bar">
+    <span class="sl-bar-label"><i class="ti ti-device-floppy"></i> Plans:</span>
+    <button class="sl-btn green" onclick="openSaveModal()"><i class="ti ti-plus"></i> Save plan</button>
+    <select class="sl-select" id="saved-plans-select">
+      <option value="">— Load a saved plan —</option>
+    </select>
+    <button class="sl-btn blue" onclick="loadSelectedPlan()"><i class="ti ti-upload"></i> Load</button>
+    <button class="sl-btn" onclick="deleteSelectedPlan()" style="color:#e07070;border-color:#6b2a2a;"><i class="ti ti-trash"></i> Delete</button>
+  </div>
+
+  <!-- SAVE NAME MODAL -->
+  <div class="save-modal-overlay" id="save-modal" onclick="handleSaveOverlay(event)">
+    <div class="save-modal">
+      <h2><i class="ti ti-device-floppy"></i> Save practice plan</h2>
+      <input type="text" id="save-plan-name" placeholder="e.g. Week 3 Tuesday — Red Zone" maxlength="60">
+      <div class="save-modal-actions">
+        <button class="btn-cancel" onclick="closeSaveModal()">Cancel</button>
+        <button class="btn-print-go" onclick="confirmSave()"><i class="ti ti-check"></i> Save</button>
+      </div>
+    </div>
   </div>
 
   <div id="blocks-container"></div>
@@ -390,11 +436,230 @@ function addBlock(){
   const customTitle=val==='custom'?ci.value.trim():'';
   if(val==='custom'&&!customTitle){ci.focus();return;}
   const cont=document.getElementById('blocks-container');
-  cont.appendChild(buildBlock(val,customTitle));
+  const newBl = buildBlock(val,customTitle);
+  newBl.dataset.key = val;
+  cont.appendChild(newBl);
   recalc();
   sel.value='';ci.value='';ci.style.display='none';
   cont.lastElementChild.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+
+// ── EXCEL EXPORT ─────────────────────────────────────────────────────────────
+function exportExcel(){
+  const dateVal = document.getElementById('pdate').value;
+  const day     = document.getElementById('pday').value;
+  const weather = document.querySelector('.meta-row input[placeholder*="Field"], .meta-row input[placeholder*="sunny"]') 
+                  ? document.querySelectorAll('.meta-row input')[2]?.value || '' : '';
+  const theme   = document.querySelectorAll('.meta-row input')[3]?.value || '';
+  const pstart  = document.getElementById('pstart').value;
+  const pend    = document.getElementById('pend').value;
+
+  let [y,m,d] = dateVal ? dateVal.split('-') : ['','',''];
+  const dateStr = dateVal ? `${m}/${d}/${y}` : '';
+
+  const wb = XLSX.utils.book_new();
+  const wsData = [];
+
+  // Header info
+  wsData.push(['JHS Bulldogs — Practice Schedule']);
+  wsData.push(['Date', dateStr, 'Day', day]);
+  wsData.push(['Weather / Field', weather, 'Focus Theme', theme]);
+  wsData.push(['Practice Start', pstart, 'Practice End', pend]);
+  wsData.push([]);
+
+  // Block rows
+  const blocks = [...document.querySelectorAll('#blocks-container .block')];
+  blocks.forEach(bl => {
+    const title    = bl.querySelector('.block-title-input').value;
+    const times    = bl.querySelector('.calc-times').textContent;
+    const mins     = bl.dataset.mins;
+
+    wsData.push([title, times, `${mins} min`]);
+
+    // Group cards if present
+    const groups = bl.querySelectorAll('.gc');
+    if(groups.length){
+      groups.forEach(gc => {
+        const groupName = gc.querySelector('.gc-hdr input').value;
+        const groupNote = gc.querySelector('textarea').value;
+        wsData.push(['', groupName, groupNote]);
+      });
+    }
+
+    // Notes / additional notes textareas
+    const textareas = [...bl.querySelectorAll('.bb > textarea')];
+    textareas.forEach(ta => {
+      if(ta.value) wsData.push(['', 'Notes', ta.value]);
+    });
+
+    wsData.push([]); // spacer
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  ws['!cols'] = [{wch:30},{wch:28},{wch:40},{wch:28}];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Practice Schedule');
+
+  const filename = dateStr 
+    ? `${m}-${d}-${y} JHS Practice Schedule.xlsx`
+    : 'JHS Practice Schedule.xlsx';
+  XLSX.writeFile(wb, filename);
+}
+
+// ── SAVE / LOAD ───────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'jhs_bulldogs_practice_plans';
+
+function getPlans(){ 
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}'); } 
+  catch(e){ return {}; } 
+}
+function setPlans(plans){ localStorage.setItem(STORAGE_KEY, JSON.stringify(plans)); }
+
+function refreshPlanSelect(){
+  const sel = document.getElementById('saved-plans-select');
+  const plans = getPlans();
+  const keys = Object.keys(plans).sort();
+  sel.innerHTML = '<option value="">— Load a saved plan —</option>';
+  keys.forEach(k => {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = k;
+    sel.appendChild(opt);
+  });
+}
+
+function openSaveModal(){
+  const dateVal = document.getElementById('pdate').value;
+  let suggested = '';
+  if(dateVal){
+    const [y,m,d] = dateVal.split('-');
+    suggested = `${m}/${d}/${y} — `;
+  }
+  document.getElementById('save-plan-name').value = suggested;
+  document.getElementById('save-modal').classList.add('open');
+  setTimeout(()=>document.getElementById('save-plan-name').focus(),100);
+}
+function closeSaveModal(){ document.getElementById('save-modal').classList.remove('open'); }
+function handleSaveOverlay(e){ if(e.target===document.getElementById('save-modal')) closeSaveModal(); }
+
+function confirmSave(){
+  const name = document.getElementById('save-plan-name').value.trim();
+  if(!name){ document.getElementById('save-plan-name').focus(); return; }
+  const plans = getPlans();
+  if(plans[name] && !confirm(`"${name}" already exists. Overwrite it?`)) return;
+  plans[name] = capturePlan();
+  setPlans(plans);
+  refreshPlanSelect();
+  // select the just-saved plan
+  document.getElementById('saved-plans-select').value = name;
+  closeSaveModal();
+}
+
+function capturePlan(){
+  const blocks = [...document.querySelectorAll('#blocks-container .block')];
+  return {
+    date:    document.getElementById('pdate').value,
+    day:     document.getElementById('pday').value,
+    weather: document.querySelectorAll('.meta-row input')[2]?.value || '',
+    theme:   document.querySelectorAll('.meta-row input')[3]?.value || '',
+    pstart:  document.getElementById('pstart').value,
+    pend:    document.getElementById('pend').value,
+    blocks:  blocks.map(bl => {
+      const groups = [...bl.querySelectorAll('.gc')].map(gc => ({
+        label: gc.querySelector('.gc-hdr input').value,
+        note:  gc.querySelector('textarea').value,
+      }));
+      const mainTextareas = [...bl.querySelectorAll('.bb > textarea')].map(t=>t.value);
+      return {
+        key:    bl.dataset.key || '',
+        title:  bl.querySelector('.block-title-input').value,
+        mins:   bl.dataset.mins,
+        color:  bl.querySelector('.bh').style.background,
+        type:   bl.dataset.type || 'simple',
+        groups, mainTextareas
+      };
+    })
+  };
+}
+
+function loadSelectedPlan(){
+  const name = document.getElementById('saved-plans-select').value;
+  if(!name){ alert('Select a saved plan first.'); return; }
+  const plans = getPlans();
+  const plan = plans[name];
+  if(!plan){ alert('Plan not found.'); return; }
+  if(!confirm(`Load "${name}"? This will replace your current schedule.`)) return;
+  applyPlan(plan);
+}
+
+function applyPlan(plan){
+  document.getElementById('pdate').value   = plan.date   || '';
+  document.getElementById('pday').value    = plan.day    || 'Monday';
+  const metaInputs = document.querySelectorAll('.meta-row input');
+  if(metaInputs[2]) metaInputs[2].value = plan.weather || '';
+  if(metaInputs[3]) metaInputs[3].value = plan.theme   || '';
+  document.getElementById('pstart').value = plan.pstart || '15:45';
+  document.getElementById('pend').value   = plan.pend   || '18:00';
+
+  const cont = document.getElementById('blocks-container');
+  cont.innerHTML = '';
+
+  (plan.blocks||[]).forEach(b => {
+    // build block using stored key or fallback to custom
+    const key = b.key || 'custom';
+    const el = buildBlock(key, b.title);
+    // restore color
+    if(b.color){ 
+      el.querySelector('.bh').style.background = b.color;
+      const sw = el.querySelector('.color-swatch');
+      if(sw) sw.value = rgbToHex(b.color);
+    }
+    // restore mins
+    el.dataset.mins = b.mins || '15';
+    const minInp = el.querySelector('.min-wrap input[type=number]');
+    if(minInp) minInp.value = b.mins || '15';
+    // restore group labels + notes
+    const gcs = [...el.querySelectorAll('.gc')];
+    (b.groups||[]).forEach((g,i) => {
+      if(gcs[i]){
+        const inp = gcs[i].querySelector('.gc-hdr input');
+        const ta  = gcs[i].querySelector('textarea');
+        if(inp) inp.value = g.label;
+        if(ta)  ta.value  = g.note;
+      }
+    });
+    // restore main textareas
+    const mainTAs = [...el.querySelectorAll('.bb > textarea')];
+    (b.mainTextareas||[]).forEach((v,i)=>{ if(mainTAs[i]) mainTAs[i].value = v; });
+
+    cont.appendChild(el);
+  });
+  recalc();
+}
+
+// helper: convert rgb(...) string back to hex for color input
+function rgbToHex(rgb){
+  if(!rgb) return '#444750';
+  if(rgb.startsWith('#')) return rgb;
+  const m = rgb.match(/\d+/g);
+  if(!m||m.length<3) return '#444750';
+  return '#'+m.slice(0,3).map(n=>parseInt(n).toString(16).padStart(2,'0')).join('');
+}
+
+function deleteSelectedPlan(){
+  const name = document.getElementById('saved-plans-select').value;
+  if(!name){ alert('Select a plan to delete.'); return; }
+  if(!confirm(`Delete "${name}"?`)) return;
+  const plans = getPlans();
+  delete plans[name];
+  setPlans(plans);
+  refreshPlanSelect();
+}
+
+// also store the block templateKey on the element for save/load
+const _origBuildBlock = buildBlock;
 
 (function init(){
   const today=new Date();
@@ -405,8 +670,13 @@ function addBlock(){
   document.getElementById('pstart').addEventListener('change',recalc);
   document.getElementById('pend').addEventListener('change',recalc);
   const cont=document.getElementById('blocks-container');
-  DEFAULT_ORDER.forEach(k=>cont.appendChild(buildBlock(k)));
+  DEFAULT_ORDER.forEach(k=>{
+    const bl = buildBlock(k);
+    bl.dataset.key = k;
+    cont.appendChild(bl);
+  });
   recalc();
+  refreshPlanSelect();
 })();
 </script>
 </body>
