@@ -112,7 +112,10 @@
   .gc textarea:focus { outline:none; }
 
   /* BASE PRINT — always hide UI chrome */
+  @page { margin: 0.4cm; }
   @media print {
+    body { padding: 0.3rem !important; }
+    .wrap { max-width: 100% !important; }
     .add-row, .top-bar-right, .drag-handle, .icon-btn, .color-swatch, .min-wrap, .modal-overlay, .warning-bar { display:none !important; }
     .block { break-inside:avoid; }
     .bh { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
@@ -254,9 +257,23 @@ function doPrint(){
   html.classList.remove('print-light','print-dark');
   if(selectedMode==='light') html.classList.add('print-light');
   else html.classList.add('print-dark');
+
+  // Set document title so PDF filename = date + schedule name
+  const dateVal = document.getElementById('pdate').value;
+  const originalTitle = document.title;
+  if(dateVal){
+    const [y,m,d] = dateVal.split('-');
+    document.title = m+'/'+d+'/'+y+' - JHS Football Practice Schedule';
+  } else {
+    document.title = 'JHS Football Practice Schedule';
+  }
+
   setTimeout(()=>{
     window.print();
-    setTimeout(()=>{ html.classList.remove('print-light','print-dark'); }, 1500);
+    setTimeout(()=>{
+      html.classList.remove('print-light','print-dark');
+      document.title = originalTitle;
+    }, 1500);
   }, 200);
 }
 
